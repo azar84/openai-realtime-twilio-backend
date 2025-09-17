@@ -1,0 +1,33 @@
+{
+  "name": "openai-realtime-twilio-backend",
+  "version": "1.0.0",
+  "description": "Backend services for OpenAI Realtime Twilio integration - WebSocket server and webhook server",
+  "main": "websocket-server/dist/server.js",
+  "scripts": {
+    "build": "cd websocket-server && npm run build",
+    "start": "cd websocket-server && npm start",
+    "dev": "cd websocket-server && npm run dev",
+    "start-webhook": "node webhook-server.js",
+    "install-all": "npm install && cd websocket-server && npm install",
+    "build-all": "npm run build",
+    "deploy-webhook": "./webhook-deploy.sh",
+    "setup-env": "./setup-env.sh"
+  },
+  "keywords": [
+    "openai",
+    "realtime",
+    "twilio",
+    "websocket",
+    "voice",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

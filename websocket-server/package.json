@@ -1,0 +1,37 @@
+{
+  "name": "twilio-realtime",
+  "version": "1.0.0",
+  "description": "Twilio real-time server with TypeScript",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@openai/agents": "^0.1.1",
+    "@openai/agents-extensions": "^0.1.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.5",
+    "@types/ws": "^8.5.12",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "httpdispatcher": "^2.2.0",
+    "pg": "^8.16.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4",
+    "ws": "^8.18.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/dotenv": "^8.2.0",
+    "@types/express": "^5.0.0",
+    "nodemon": "^2.0.22"
+  }
+}
