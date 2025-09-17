@@ -38,26 +38,18 @@ exports.updateToolConfiguration = updateToolConfiguration;
 exports.getToolConfiguration = getToolConfiguration;
 exports.getToolConfigurationsAsObject = getToolConfigurationsAsObject;
 const pg_1 = require("pg");
-// Database configuration
+// Database configuration - uses DATABASE_URL only
 const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME || 'openai_realtime_db',
-    user: process.env.DB_USER || process.env.USER,
-    password: process.env.DB_PASSWORD || '',
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     max: 10, // Smaller pool for websocket server
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
 };
 // Create a connection pool
 const pool = new pg_1.Pool(dbConfig);
-console.log('Database config:', {
-    host: dbConfig.host,
-    port: dbConfig.port,
-    database: dbConfig.database,
-    user: dbConfig.user,
-    password: dbConfig.password ? '***' : 'empty'
-});
+// Log database configuration (hide sensitive info)
+console.log('Database config: Using DATABASE_URL');
 // Handle pool errors
 pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);

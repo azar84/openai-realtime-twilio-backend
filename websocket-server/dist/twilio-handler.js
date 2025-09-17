@@ -50,6 +50,7 @@ function handleCallConnection(ws, openAIApiKey) {
     session.openAIApiKey = openAIApiKey;
     session.streamSid = undefined;
     session.lastAssistantItem = undefined;
+    session.lastUserItem = undefined;
     session.responseStartTimestamp = undefined;
     session.latestMediaTimestamp = undefined;
     session.saved_config = undefined;
@@ -256,18 +257,42 @@ function saveUserMessage(item) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b, _c, _d, _e;
         try {
-            if (!session.dbSessionId)
+            console.log('🔍 saveUserMessage called with:', {
+                item_id: item.id,
+                transcript: item.transcript,
+                content: item.content,
+                dbSessionId: session.dbSessionId
+            });
+            if (!session.dbSessionId) {
+                console.log('❌ No dbSessionId, cannot save user message');
                 return;
+            }
             // Extract text content from the message
-            const content = ((_b = (_a = item.content) === null || _a === void 0 ? void 0 : _a.find((c) => c.type === "input_text")) === null || _b === void 0 ? void 0 : _b.text) ||
-                ((_d = (_c = item.content) === null || _c === void 0 ? void 0 : _c.find((c) => c.type === "text")) === null || _d === void 0 ? void 0 : _d.text) ||
-                JSON.stringify(item.content);
+            let content = '';
+            // For input_audio_transcription.completed events, the transcript is directly available
+            if (item.transcript) {
+                content = item.transcript;
+                console.log('📝 Using transcript as content:', content);
+            }
+            else {
+                // Fallback to content extraction for other message types
+                content = ((_b = (_a = item.content) === null || _a === void 0 ? void 0 : _a.find((c) => c.type === "input_text")) === null || _b === void 0 ? void 0 : _b.text) ||
+                    ((_d = (_c = item.content) === null || _c === void 0 ? void 0 : _c.find((c) => c.type === "text")) === null || _d === void 0 ? void 0 : _d.text) ||
+                    JSON.stringify(item.content);
+                console.log('📝 Using fallback content:', content);
+            }
+            // Don't save if content is empty or just JSON with no meaningful content
+            if (!content || content === 'null' || content === '""' || content === '[]') {
+                console.log('⚠️ Skipping user message with no meaningful content:', { item_id: item.id, content });
+                return;
+            }
             yield (0, db_1.saveConversationMessage)(session.dbSessionId, 'user', content, session.streamSid, {
                 item_id: item.id,
                 role: item.role,
-                content_type: (_e = item.content) === null || _e === void 0 ? void 0 : _e.map((c) => c.type).join(', ')
+                content_type: ((_e = item.content) === null || _e === void 0 ? void 0 : _e.map((c) => c.type).join(', ')) || 'transcript',
+                transcript: item.transcript || null
             }, undefined, false);
-            console.log('💾 Saved user message to database:', { content: content.substring(0, 50) + '...' });
+            console.log('💾 Saved user message to database:', { content: content.substring(0, 50) + '...', transcript: !!item.transcript });
         }
         catch (error) {
             console.error('❌ Error saving user message:', error);
@@ -297,10 +322,26 @@ function saveAssistantMessage(item) {
     });
 }
 function handleModelMessage(data) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     const event = parseMessage(data);
     if (!event)
         return;
     jsonSend(session.frontendConn, event);
+    // Log all conversation-related events for debugging
+    if (event.type.includes('conversation.item') || event.type.includes('input_audio')) {
+        const logData = {
+            type: event.type,
+            item_id: (_a = event.item) === null || _a === void 0 ? void 0 : _a.id,
+            role: (_b = event.item) === null || _b === void 0 ? void 0 : _b.role,
+            transcript: (_c = event.item) === null || _c === void 0 ? void 0 : _c.transcript,
+            content: (_e = (_d = event.item) === null || _d === void 0 ? void 0 : _d.content) === null || _e === void 0 ? void 0 : _e.map((c) => c.type)
+        };
+        console.log('🔍 Event received:', JSON.stringify(logData, null, 2));
+        // Also write to a log file for debugging
+        const fs = require('fs');
+        const logEntry = `${new Date().toISOString()} - ${JSON.stringify(logData)}\n`;
+        fs.appendFileSync('debug-events.log', logEntry);
+    }
     switch (event.type) {
         case "input_audio_buffer.speech_started":
             handleTruncation();
@@ -324,9 +365,50 @@ function handleModelMessage(data) {
             }
             break;
         case "conversation.item.created":
-            // Save user messages to database
+            // Save user messages if they have text content (not just audio input)
+            console.log('📝 Conversation item created:', {
+                item_id: (_f = event.item) === null || _f === void 0 ? void 0 : _f.id,
+                role: (_g = event.item) === null || _g === void 0 ? void 0 : _g.role,
+                content_types: (_j = (_h = event.item) === null || _h === void 0 ? void 0 : _h.content) === null || _j === void 0 ? void 0 : _j.map((c) => c.type)
+            });
             if (event.item && event.item.role === "user" && session.dbSessionId) {
-                saveUserMessage(event.item).catch(console.error);
+                // Track the last user item for transcription completion
+                session.lastUserItem = event.item;
+                // Check if this has actual text content (not just input_audio)
+                const hasTextContent = (_k = event.item.content) === null || _k === void 0 ? void 0 : _k.some((c) => c.type === "input_text" || c.type === "text");
+                if (hasTextContent) {
+                    console.log('💬 Saving user text message from item.created');
+                    saveUserMessage(event.item).catch(console.error);
+                }
+                else {
+                    console.log('🎤 User audio input - waiting for transcription completion');
+                }
+            }
+            break;
+        case "conversation.item.input_audio_transcription.completed":
+            // Save user messages when transcription is completed
+            console.log('🎤 Audio transcription completed - Full event:', JSON.stringify(event, null, 2));
+            // The transcription completed event contains the transcript and item_id
+            if (session.dbSessionId && event.transcript && event.item_id) {
+                console.log('💾 Attempting to save user message to database...');
+                // Create a message object with the transcript from the completed event
+                const messageToSave = {
+                    id: event.item_id,
+                    role: 'user',
+                    transcript: event.transcript,
+                    content: [{ type: 'input_audio', transcript: event.transcript }]
+                };
+                console.log('📝 Saving user message with transcript:', messageToSave);
+                saveUserMessage(messageToSave).catch((error) => {
+                    console.error('❌ Error saving user message:', error);
+                });
+            }
+            else {
+                console.log('⚠️ Missing required data for transcription completion:', {
+                    hasDbSession: !!session.dbSessionId,
+                    hasTranscript: !!event.transcript,
+                    hasItemId: !!event.item_id
+                });
             }
             break;
         case "response.output_item.done": {

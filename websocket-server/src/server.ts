@@ -37,8 +37,9 @@ import {
 import { getEphemeralKey } from "./ephemeral";
 import agentInstructions from "./agent-instructions";
 
-dotenv.config();
+// Environment variables loaded via ts-node -r dotenv/config
 
+// Use Heroku's PORT environment variable, fallback to 8081 for local development
 const PORT = parseInt(process.env.PORT || "8081", 10);
 const PUBLIC_URL = process.env.PUBLIC_URL || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";

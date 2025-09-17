@@ -48,6 +48,7 @@ const db_1 = require("./db");
 const ephemeral_1 = require("./ephemeral");
 const agent_instructions_1 = __importDefault(require("./agent-instructions"));
 dotenv_1.default.config();
+// Use Heroku's PORT environment variable, fallback to 8081 for local development
 const PORT = parseInt(process.env.PORT || "8081", 10);
 const PUBLIC_URL = process.env.PUBLIC_URL || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -333,11 +334,101 @@ app.post("/api/function-call", ((req, res) => __awaiter(void 0, void 0, void 0, 
 // Note: reload configuration endpoint is disabled in baseline restore
 let currentCall = null;
 let currentLogs = null;
+let currentWebRTC = null;
 // Function to broadcast to logs WebSocket
 function broadcastToLogs(message) {
     if (currentLogs && currentLogs.readyState === ws_1.WebSocket.OPEN) {
         currentLogs.send(JSON.stringify(message));
     }
+}
+// Function to handle WebRTC connection
+function handleWebRTCConnection(ws) {
+    console.log("🔌 WebRTC WebSocket connected");
+    ws.on("message", (data) => __awaiter(this, void 0, void 0, function* () {
+        try {
+            const message = JSON.parse(data.toString());
+            console.log("📨 WebRTC message received:", message.type);
+            switch (message.type) {
+                case "transcript":
+                    yield handleWebRTCTranscript(message);
+                    break;
+                case "session_start":
+                    yield handleWebRTCSessionStart(message);
+                    break;
+                case "session_end":
+                    yield handleWebRTCSessionEnd(message);
+                    break;
+                default:
+                    console.log("🔍 Unknown WebRTC message type:", message.type);
+            }
+        }
+        catch (error) {
+            console.error("❌ Error processing WebRTC message:", error);
+        }
+    }));
+    ws.on("close", () => {
+        console.log("🔌 WebRTC WebSocket disconnected");
+        if (currentWebRTC === ws) {
+            currentWebRTC = null;
+        }
+    });
+    ws.on("error", (error) => {
+        console.error("❌ WebRTC WebSocket error:", error);
+    });
+}
+// Handle WebRTC transcript messages
+function handleWebRTCTranscript(message) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const { sessionId, text, isUser, metadata } = message;
+            if (!sessionId) {
+                console.error("❌ No session ID provided for WebRTC transcript");
+                return;
+            }
+            console.log("📝 Saving WebRTC transcript:", {
+                sessionId,
+                text: text.substring(0, 50) + '...',
+                isUser
+            });
+            const messageId = yield (0, db_1.saveConversationMessage)(sessionId, isUser ? 'user' : 'assistant', text, undefined, Object.assign(Object.assign({}, metadata), { source: 'webrtc' }), undefined, // audioDurationMs
+            false // isAudio
+            );
+            console.log("✅ Saved WebRTC message:", messageId);
+        }
+        catch (error) {
+            console.error("❌ Error saving WebRTC transcript:", error);
+        }
+    });
+}
+// Handle WebRTC session start
+function handleWebRTCSessionStart(message) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const { sessionId, configId } = message;
+            console.log("🚀 WebRTC session started:", { sessionId, configId });
+            // Session should already be created by frontend, just log it
+            console.log("✅ WebRTC session active:", sessionId);
+        }
+        catch (error) {
+            console.error("❌ Error handling WebRTC session start:", error);
+        }
+    });
+}
+// Handle WebRTC session end
+function handleWebRTCSessionEnd(message) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const { sessionId } = message;
+            console.log("🏁 WebRTC session ended:", sessionId);
+            if (sessionId) {
+                yield (0, db_1.updateSessionStatus)(sessionId, 'ended');
+                console.log("✅ Updated WebRTC session status to ended");
+            }
+        }
+        catch (error) {
+            console.error("❌ Error handling WebRTC session end:", error);
+        }
+    });
 }
 // Make broadcastToLogs available globally
 global.broadcastToLogs = broadcastToLogs;
@@ -362,6 +453,12 @@ wss.on("connection", (ws, req) => __awaiter(void 0, void 0, void 0, function* ()
                 currentLogs.close();
             currentLogs = ws;
             (0, twilio_handler_1.handleFrontendConnection)(currentLogs);
+        }
+        else if (type === "webrtc") {
+            if (currentWebRTC)
+                currentWebRTC.close();
+            currentWebRTC = ws;
+            handleWebRTCConnection(currentWebRTC);
         }
         else {
             ws.close();
@@ -394,6 +491,17 @@ app.get('/api/sessions', (req, res) => __awaiter(void 0, void 0, void 0, functio
     catch (error) {
         console.error('Error getting sessions:', error);
         res.status(500).json({ error: 'Failed to get sessions' });
+    }
+}));
+app.post('/api/sessions', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { session_id, config_id, twilio_stream_sid } = req.body;
+        const dbSessionId = yield (0, db_1.createSession)(session_id, config_id, twilio_stream_sid);
+        res.json({ id: dbSessionId, success: true });
+    }
+    catch (error) {
+        console.error('Error creating session:', error);
+        res.status(500).json({ error: 'Failed to create session' });
     }
 }));
 // Conversation Messages endpoints

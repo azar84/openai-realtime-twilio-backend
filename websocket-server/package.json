@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
+    "dev": "nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node -r dotenv/config' src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
